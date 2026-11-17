@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harbourlight — Pier 9 | a three.js tactical FPS</title>
+<style>
+  /* Palette: harbour night. Deep ink water-sky, steel deck, lamp amber, signal teal. */
+  :root {
+    --ink: #0b0e14;
+    --deck: #151a22;
+    --panel: #1a212c;
+    --line: #2b3644;
+    --text: #e8e4d8;
+    --dim: #93a0ad;
+    --amber: #f2a33c;
+    --teal: #35c9b8;
+    --red: #e4572e;
+    --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--text); font-family: var(--font-ui); }
+  #game, #game canvas { position: fixed; inset: 0; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); }
+  #crosshair i { position: absolute; background: var(--text); opacity: .9; box-shadow: 0 0 2px #000; }
+  #crosshair i:nth-child(1) { left: 11px; top: 0; width: 2px; height: 8px; }
+  #crosshair i:nth-child(2) { left: 11px; bottom: 0; width: 2px; height: 8px; }
+  #crosshair i:nth-child(3) { top: 11px; left: 0; height: 2px; width: 8px; }
+  #crosshair i:nth-child(4) { top: 11px; right: 0; height: 2px; width: 8px; }
+  #crosshair .dot { left: 11px; top: 11px; width: 2px; height: 2px; }
+  #crosshair.spread i:nth-child(1) { top: -3px; } #crosshair.spread i:nth-child(2) { bottom: -3px; }
+  #crosshair.spread i:nth-child(3) { left: -3px; } #crosshair.spread i:nth-child(4) { right: -3px; }
+
+  #hitmarker { position: fixed; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%) rotate(45deg); opacity: 0; transition: opacity 80ms linear; }
+  #hitmarker.on { opacity: 1; } #hitmarker.kill i { background: var(--red); }
+  #hitmarker i { position: absolute; background: var(--text); }
+  #hitmarker i:nth-child(1) { left: 14px; top: 0; width: 2px; height: 9px; }
+  #hitmarker i:nth-child(2) { left: 14px; bottom: 0; width: 2px; height: 9px; }
+  #hitmarker i:nth-child(3) { top: 14px; left: 0; height: 2px; width: 9px; }
+  #hitmarker i:nth-child(4) { top: 14px; right: 0; height: 2px; width: 9px; }
+
+  #topbar { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; font-family: var(--font-mono); font-size: 15px; }
+  #topbar .score { font-size: 22px; font-weight: 700; letter-spacing: .06em; }
+  #topbar .score .lan { color: var(--teal); } #topbar .score .fog { color: var(--amber); }
+  #timer { min-width: 64px; text-align: center; padding: 4px 10px; background: rgba(11,14,20,.72); border: 1px solid var(--line); border-radius: 4px; }
+  #timer.low { color: var(--red); border-color: var(--red); }
+  #round-label { font-size: 12px; color: var(--dim); letter-spacing: .14em; text-transform: uppercase; }
+
+  #alive { position: fixed; top: 14px; right: 20px; text-align: right; font-family: var(--font-mono); font-size: 13px; color: var(--dim); line-height: 1.6; }
+  #alive b { color: var(--text); font-size: 15px; }
+  #money { position: fixed; top: 64px; right: 20px; font-family: var(--font-mono); font-size: 15px; color: var(--amber); }
+
+  #feed { position: fixed; top: 96px; right: 20px; width: 300px; text-align: right; font-size: 13px; line-height: 1.7; color: var(--dim); }
+  #feed div b { color: var(--text); } #feed div .hs { color: var(--amber); }
+
+  #health { position: fixed; left: 28px; bottom: 22px; width: 240px; }
+  #health .row { display: flex; align-items: baseline; gap: 10px; }
+  #health .num { font-family: var(--font-mono); font-size: 40px; line-height: 1; }
+  #health .lbl { font-size: 12px; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; }
+  #healthbar { height: 8px; margin-top: 6px; background: rgba(255,255,255,.12); border-radius: 2px; overflow: hidden; }
+  #healthfill { height: 100%; width: 100%; background: var(--teal); transition: width 120ms linear; }
+  #healthfill.low { background: var(--red); }
+
+  #ammo { position: fixed; right: 28px; bottom: 22px; text-align: right; font-family: var(--font-mono); }
+  #ammo .mag { font-size: 52px; line-height: 1; }
+  #ammo .mag.empty { color: var(--red); }
+  #ammo .res { font-size: 16px; color: var(--dim); }
+  #ammo .wname { font-size: 13px; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px; }
+
+  #objective { position: fixed; left: 28px; top: 14px; font-family: var(--font-mono); font-size: 13px; line-height: 1.7; color: var(--dim); }
+  #objective b { color: var(--amber); }
+  #objective .site { color: var(--text); }
+
+  #progress { position: fixed; left: 50%; top: 58%; transform: translateX(-50%); width: 260px; display: none; text-align: center; }
+  #progress .lbl { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px; }
+  #progress .bar { height: 8px; background: rgba(255,255,255,.14); border-radius: 2px; overflow: hidden; }
+  #progress .fill { height: 100%; width: 0; background: var(--amber); }
+
+  #banner { position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%); text-align: center; display: none; }
+  #banner .big { font-size: 44px; font-weight: 700; letter-spacing: .04em; text-shadow: 0 2px 18px rgba(0,0,0,.8); }
+  #banner .sub { font-size: 15px; color: var(--dim); margin-top: 6px; }
+  #banner.win .big { color: var(--teal); } #banner.lose .big { color: var(--red); }
+
+  #hint { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); font-size: 13px; color: var(--dim); background: rgba(11,14,20,.66); padding: 6px 12px; border-radius: 4px; border: 1px solid var(--line); }
+
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(8,10,15,.62); z-index: 10; }
+  .overlay[hidden] { display: none; }
+  .panel { width: min(560px, 100%); padding: 30px 32px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  .panel h1 { margin: 0 0 4px; font-size: 34px; letter-spacing: .02em; }
+  .panel h1 span { color: var(--teal); }
+  .panel .tag { color: var(--amber); font-family: var(--font-mono); font-size: 13px; letter-spacing: .18em; text-transform: uppercase; }
+  .panel p { margin: 12px 0 20px; font-size: 15px; line-height: 1.55; color: var(--dim); }
+  .panel p b { color: var(--text); }
+  .btn { font: inherit; font-weight: 600; padding: 12px 20px; border: 1px solid var(--teal); border-radius: 6px; background: var(--teal); color: #06110f; cursor: pointer; }
+  .btn:hover { background: var(--text); border-color: var(--text); }
+  .keys { margin: 20px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; color: var(--dim); }
+  .keys kbd { display: inline-block; min-width: 24px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; font-family: var(--font-mono); font-size: 12px; color: var(--text); text-align: center; margin-right: 4px; }
+
+  #buy { position: fixed; inset: 0; display: none; place-items: center; z-index: 9; background: rgba(8,10,15,.55); }
+  #buy.open { display: grid; }
+  #buy .panel { width: min(680px, 96%); }
+  #buy h2 { margin: 0 0 4px; font-size: 24px; } #buy h2 span { color: var(--amber); }
+  #buy .sub { color: var(--dim); font-size: 13px; margin-bottom: 16px; font-family: var(--font-mono); }
+  .shop { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .item { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; background: var(--deck); }
+  .item.owned { border-color: var(--teal); }
+  .item.cant { opacity: .45; }
+  .item .nm { font-weight: 700; font-size: 15px; } .item .nm .key { color: var(--amber); font-family: var(--font-mono); margin-right: 6px; }
+  .item .ds { font-size: 12px; color: var(--dim); margin: 4px 0 6px; line-height: 1.45; }
+  .item .pr { font-family: var(--font-mono); font-size: 14px; color: var(--amber); }
+
+  #dmg { position: fixed; inset: 0; pointer-events: none; z-index: 6; box-shadow: inset 0 0 120px 40px rgba(228,87,46,0); transition: box-shadow 120ms linear; }
+  #dmg.on { box-shadow: inset 0 0 120px 40px rgba(228,87,46,.55); }
+  #flash { position: fixed; inset: 0; pointer-events: none; z-index: 6; background: #fff; opacity: 0; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 4; box-shadow: inset 0 0 180px 60px rgba(0,0,0,.55); }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="vignette"></div>
+<div id="dmg"></div>
+<div id="flash"></div>
+
+<div id="hud" aria-hidden="true">
+  <div id="crosshair"><i></i><i></i><i></i><i></i><i class="dot"></i></div>
+  <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  <div id="topbar">
+    <span id="round-label">Round 1</span>
+    <span class="score"><span class="lan" id="score-lan">0</span> : <span class="fog" id="score-fog">0</span></span>
+    <span id="timer">1:40</span>
+  </div>
+  <div id="objective"></div>
+  <div id="alive"></div>
+  <div id="money"></div>
+  <div id="feed"></div>
+  <div id="health">
+    <div class="row"><span class="num" id="hp-num">100</span><span class="lbl">Hull · Lantern Crew</span></div>
+    <div id="healthbar"><div id="healthfill"></div></div>
+  </div>
+  <div id="ammo">
+    <div class="wname" id="wname">Gull-9</div>
+    <span class="mag" id="ammo-mag">12</span><span class="res" id="ammo-res"> / 48</span>
+  </div>
+  <div id="progress"><div class="lbl" id="progress-lbl">Planting beacon</div><div class="bar"><div class="fill" id="progress-fill"></div></div></div>
+  <div id="banner"><div class="big" id="banner-big"></div><div class="sub" id="banner-sub"></div></div>
+  <div id="hint"></div>
+</div>
+
+<div id="buy">
+  <div class="panel">
+    <h2>Harbour Stores <span id="buy-money">$800</span></h2>
+    <div class="sub">Buy phase — press B or Esc to close · 1–4 weapons · 5 grenade</div>
+    <div class="shop" id="shop"></div>
+  </div>
+</div>
+
+<div id="overlay" class="overlay">
+  <section class="panel" role="dialog" aria-modal="true" aria-labelledby="title">
+    <div class="tag">Pier 9 · Night Harbour</div>
+    <h1>HARBOUR<span>LIGHT</span></h1>
+    <p>A round-based tactical FPS on a night container harbour. <b>You are Lantern Crew.</b> Plant the beacon charge at Site A (the crane) or Site B (the warehouse) — or eliminate the Fog Runners. Win 5 rounds to take the night. Money buys better steel between rounds.</p>
+    <button id="play" type="button">Click to play</button>
+    <ul class="keys">
+      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</li>
+      <li><kbd>Mouse</kbd> Look · <kbd>Click</kbd> Fire</li>
+      <li><kbd>R</kbd> Reload · <kbd>Ctrl</kbd>/<kbd>C</kbd> Crouch</li>
+      <li><kbd>Space</kbd> Jump · <kbd>Shift</kbd> Walk</li>
+      <li><kbd>B</kbd> Buy menu · <kbd>1</kbd>–<kbd>4</kbd> Weapons</li>
+      <li><kbd>G</kbd> Throw flare charge · <kbd>E</kbd> Plant / defuse</li>
+    </ul>
+  </section>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.min.js"
+  }
+}
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
